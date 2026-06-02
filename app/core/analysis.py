@@ -22,6 +22,37 @@ from app.engines.stockfish_engine import StockfishEngine, StockfishUnavailable
 from app.models.move_analysis import MoveAnalysis
 from app.models.position_analysis import PositionAnalysis
 
+PIECE_VALUES = {
+    chess.PAWN: 100,
+    chess.KNIGHT: 320,
+    chess.BISHOP: 330,
+    chess.ROOK: 500,
+    chess.QUEEN: 900,
+    chess.KING: 0,
+}
+
+CENTER_SQUARES = {
+    chess.D4,
+    chess.E4,
+    chess.D5,
+    chess.E5,
+}
+
+NEAR_CENTER_SQUARES = {
+    chess.C3,
+    chess.D3,
+    chess.E3,
+    chess.F3,
+    chess.C4,
+    chess.F4,
+    chess.C5,
+    chess.F5,
+    chess.C6,
+    chess.D6,
+    chess.E6,
+    chess.F6,
+}
+
 
 def analyze_position(
     fen: str,
@@ -173,21 +204,7 @@ def _add_engine_scores(
     warnings: list[str],
 ) -> None:
     if use_demo_data:
-        demo_eval = {
-            "e2e4": 35,
-            "d2d4": 28,
-            "g1f3": 22,
-            "c2c4": 18,
-            "b1c3": 8,
-            "f2f4": -12,
-        }
-        for move in moves:
-            move.engine_eval_cp = demo_eval.get(move.move_uci, 0)
-            move.engine_eval_pawns = move.engine_eval_cp / 100
-            move.engine_score_white, move.engine_score_side_to_move = compute_engine_scores(
-                move.engine_eval_cp, None, side_to_move, engine_k
-            )
-            move.stockfish_pv = f"{move.move_uci} demo-line"
+        _add_fallback_engine_scores(fen, moves, side_to_move, engine_k, source_label="demo")
         return
 
     engine = StockfishEngine(settings.stockfish_path)
@@ -201,6 +218,15 @@ def _add_engine_scores(
             )
         except StockfishUnavailable as exc:
             warnings.append(str(exc))
+            warnings.append("Using simplified local evaluation so engine suggestions remain visible.")
+            _add_fallback_engine_scores(
+                fen,
+                moves,
+                side_to_move,
+                engine_k,
+                source_label="fallback",
+                only_missing=True,
+            )
             return
         move.engine_eval_cp = result.eval_cp
         move.engine_eval_pawns = result.eval_cp / 100 if result.eval_cp is not None else None
@@ -209,6 +235,60 @@ def _add_engine_scores(
         move.engine_score_white, move.engine_score_side_to_move = compute_engine_scores(
             result.eval_cp, result.mate_score, side_to_move, engine_k
         )
+
+
+def _add_fallback_engine_scores(
+    fen: str,
+    moves: list[MoveAnalysis],
+    side_to_move: str,
+    engine_k: float,
+    source_label: str,
+    only_missing: bool = False,
+) -> None:
+    for move in moves:
+        if only_missing and move.engine_score_side_to_move is not None:
+            continue
+        eval_cp = _simple_eval_after_move(fen, move.move_uci)
+        move.engine_eval_cp = eval_cp
+        move.engine_eval_pawns = eval_cp / 100
+        move.mate_score = None
+        move.engine_score_white, move.engine_score_side_to_move = compute_engine_scores(
+            eval_cp, None, side_to_move, engine_k
+        )
+        move.stockfish_pv = f"{move.move_uci} {source_label}-eval"
+
+
+def _simple_eval_after_move(fen: str, move_uci: str) -> int:
+    board = board_from_fen(fen)
+    move = chess.Move.from_uci(move_uci)
+    if move not in board.legal_moves:
+        return 0
+    board.push(move)
+    return _simple_board_eval_cp(board)
+
+
+def _simple_board_eval_cp(board: chess.Board) -> int:
+    if board.is_checkmate():
+        return -100000 if board.turn == chess.WHITE else 100000
+    if board.is_stalemate() or board.is_insufficient_material():
+        return 0
+
+    score = 0
+    for square, piece in board.piece_map().items():
+        sign = 1 if piece.color == chess.WHITE else -1
+        score += sign * PIECE_VALUES[piece.piece_type]
+        if square in CENTER_SQUARES:
+            score += sign * 18
+        elif square in NEAR_CENTER_SQUARES:
+            score += sign * 8
+
+    # Mild mobility term keeps opening candidate moves from all looking identical.
+    white_board = board.copy(stack=False)
+    black_board = board.copy(stack=False)
+    white_board.turn = chess.WHITE
+    black_board.turn = chess.BLACK
+    score += 2 * (white_board.legal_moves.count() - black_board.legal_moves.count())
+    return int(score)
 
 
 def _rank_moves(moves: list[MoveAnalysis]) -> None:
@@ -269,4 +349,3 @@ def _fmt(value: float | None) -> str:
     if value is None:
         return "unknown"
     return f"{value:+.2f}"
-
