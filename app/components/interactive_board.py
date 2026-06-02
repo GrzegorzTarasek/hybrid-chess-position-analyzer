@@ -12,17 +12,19 @@ HTML = """
 
 CSS = """
 .chess-shell {
-  width: min(100%, 560px);
+  width: min(100%, 544px);
   margin: 0 auto;
 }
 .board {
   display: grid;
-  grid-template-columns: repeat(8, minmax(38px, 1fr));
-  width: min(100%, 560px);
+  grid-template-columns: repeat(8, 1fr);
+  width: min(100%, 544px);
   aspect-ratio: 1 / 1;
-  border: 2px solid #312e2b;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
-  background: #312e2b;
+  border: 1px solid #2b2f36;
+  border-radius: 6px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+  background: #2b2f36;
+  overflow: hidden;
   user-select: none;
   touch-action: none;
 }
@@ -31,39 +33,61 @@ CSS = """
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: clamp(30px, 8vw, 56px);
+  aspect-ratio: 1 / 1;
+  font-size: clamp(30px, 7vw, 54px);
   line-height: 1;
   cursor: pointer;
 }
-.light { background: #eeeed2; }
-.dark { background: #769656; }
+.light { background: #ece9d5; }
+.dark { background: #6f8f4e; }
 .square.selected::after {
   content: "";
   position: absolute;
-  inset: 7%;
-  border: 3px solid rgba(246, 205, 80, 0.95);
+  inset: 6%;
+  border: 3px solid #ffcc33;
+  border-radius: 3px;
   pointer-events: none;
 }
-.square.lastmove { background: #f5dd67; }
-.dark.lastmove { background: #baca44; }
+.square.lastmove { background: #f0d66c; }
+.dark.lastmove { background: #b8c75a; }
 .square.legal::before {
   content: "";
   position: absolute;
-  width: 28%;
-  height: 28%;
+  width: 24%;
+  height: 24%;
   border-radius: 50%;
-  background: rgba(40, 40, 40, 0.25);
+  background: rgba(22, 27, 34, 0.28);
 }
 .piece {
   z-index: 1;
   cursor: grab;
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 86%;
+  height: 86%;
+  font-family: "DejaVu Sans", "Segoe UI Symbol", "Noto Sans Symbols 2", serif;
+  font-size: 0.82em;
+  font-weight: 700;
+  transform: translateY(-1px);
 }
 .piece:active { cursor: grabbing; }
+.white-piece {
+  color: #fbfaf2;
+  text-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.52),
+    0 0 1px rgba(0, 0, 0, 0.75);
+}
+.black-piece {
+  color: #23262b;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.45),
+    0 0 1px rgba(255, 255, 255, 0.6);
+}
 .status {
   min-height: 28px;
   padding-top: 8px;
-  color: #555;
+  color: #9ca3af;
   font: 14px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 """
@@ -160,7 +184,7 @@ export default function(component) {
       const piece = pieces[square];
       if (piece) {
         const pieceElement = document.createElement("span");
-        pieceElement.className = "piece";
+        pieceElement.className = `piece ${piece === piece.toUpperCase() ? "white-piece" : "black-piece"}`;
         pieceElement.textContent = PIECES[piece] || piece;
         pieceElement.draggable = true;
         pieceElement.dataset.square = square;
@@ -227,4 +251,3 @@ def interactive_board(
         key=key,
         on_move_change=lambda: None,
     )
-

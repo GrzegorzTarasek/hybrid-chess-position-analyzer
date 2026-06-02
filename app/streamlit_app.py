@@ -96,16 +96,33 @@ def render_board(fen: str, last_move_uci: str | None = None, size: int = 520) ->
         except ValueError:
             last_move = None
     check_square = board.king(board.turn) if board.is_check() else None
-    svg = chess.svg.board(board=board, size=size, lastmove=last_move, check=check_square)
+    svg = chess.svg.board(
+        board=board,
+        size=size,
+        lastmove=last_move,
+        check=check_square,
+        colors={
+            "square light": "#ece9d5",
+            "square dark": "#6f8f4e",
+            "square light lastmove": "#f0d66c",
+            "square dark lastmove": "#b8c75a",
+            "margin": "#2b2f36",
+            "coord": "#d7dac5",
+            "inner border": "#2b2f36",
+            "outer border": "#2b2f36",
+        },
+    )
     html = f"""
     <style>
       .board-wrap {{
         width: {size}px;
         max-width: 100%;
         margin: 0 auto;
-        border: 1px solid #2d2d2d;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-        background: #262421;
+        border: 1px solid #2b2f36;
+        border-radius: 6px;
+        box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+        background: #2b2f36;
+        overflow: hidden;
       }}
       .board-wrap svg {{
         display: block;
