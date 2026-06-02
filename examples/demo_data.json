@@ -1,0 +1,48 @@
+{
+  "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "moves": [
+    {
+      "move_uci": "e2e4",
+      "move_san": "e4",
+      "white_wins": 1200000,
+      "draws": 550000,
+      "black_wins": 950000
+    },
+    {
+      "move_uci": "d2d4",
+      "move_san": "d4",
+      "white_wins": 910000,
+      "draws": 510000,
+      "black_wins": 700000
+    },
+    {
+      "move_uci": "g1f3",
+      "move_san": "Nf3",
+      "white_wins": 430000,
+      "draws": 240000,
+      "black_wins": 310000
+    },
+    {
+      "move_uci": "c2c4",
+      "move_san": "c4",
+      "white_wins": 360000,
+      "draws": 230000,
+      "black_wins": 270000
+    },
+    {
+      "move_uci": "b1c3",
+      "move_san": "Nc3",
+      "white_wins": 88000,
+      "draws": 34000,
+      "black_wins": 80000
+    },
+    {
+      "move_uci": "f2f4",
+      "move_san": "f4",
+      "white_wins": 76000,
+      "draws": 21000,
+      "black_wins": 73000
+    }
+  ]
+}
+
