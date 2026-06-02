@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 import json
 from pathlib import Path
 
@@ -65,6 +66,7 @@ def analyze_position(
     refresh_cache: bool = False,
     use_demo_data: bool = False,
     engine_k: float = 0.8,
+    required_moves: Iterable[str] | None = None,
 ) -> PositionAnalysis:
     board = board_from_fen(fen)
     if board.is_game_over():
@@ -85,7 +87,7 @@ def analyze_position(
         )
         warnings.extend(source_warnings)
 
-    moves = _build_initial_moves(fen, historical_rows, max_moves)
+    moves = _build_initial_moves(fen, historical_rows, max_moves, required_moves=required_moves)
     _add_scores_from_history(moves, side_to_move)
     _add_engine_scores(
         fen=fen,
@@ -109,6 +111,10 @@ def analyze_position(
     _rank_moves(moves)
     apply_labels(moves, min_games=min_games)
     moves.sort(key=lambda move: (move.rank_hybrid or 999, move.rank_engine or 999))
+    current_eval_cp = _simple_board_eval_cp(board)
+    _, current_score_side_to_move = compute_engine_scores(
+        current_eval_cp, None, side_to_move, engine_k
+    )
 
     analysis = PositionAnalysis(
         fen=fen,
@@ -118,6 +124,10 @@ def analyze_position(
         best_human_move=_first_ranked(moves, "rank_human"),
         best_hybrid_move=_first_ranked(moves, "rank_hybrid"),
         most_popular_move=_first_ranked(moves, "rank_popularity"),
+        current_eval_cp=current_eval_cp,
+        current_eval_pawns=current_eval_cp / 100,
+        current_mate_score=None,
+        current_score_side_to_move=current_score_side_to_move,
         source=source,
         warnings=warnings,
     )
@@ -162,12 +172,14 @@ def _build_initial_moves(
     fen: str,
     historical_rows: list[dict[str, object]],
     max_moves: int,
+    required_moves: Iterable[str] | None = None,
 ) -> list[MoveAnalysis]:
     legal = legal_moves_uci(fen)
+    legal_set = set(legal)
     by_uci: dict[str, MoveAnalysis] = {}
     for row in historical_rows:
         move_uci = str(row["move_uci"])
-        if move_uci not in legal:
+        if move_uci not in legal_set:
             continue
         by_uci[move_uci] = MoveAnalysis(
             move_uci=move_uci,
@@ -177,12 +189,19 @@ def _build_initial_moves(
             black_wins=int(row.get("black_wins", 0)),
         )
 
+    for move_uci in required_moves or []:
+        if move_uci in legal_set:
+            by_uci.setdefault(
+                move_uci,
+                MoveAnalysis(move_uci=move_uci, move_san=uci_to_san(fen, move_uci)),
+            )
+
     for move_uci in legal:
         if len(by_uci) >= max_moves:
             break
         by_uci.setdefault(move_uci, MoveAnalysis(move_uci=move_uci, move_san=uci_to_san(fen, move_uci)))
 
-    return list(by_uci.values())[:max_moves]
+    return list(by_uci.values())
 
 
 def _add_scores_from_history(moves: list[MoveAnalysis], side_to_move: str) -> None:

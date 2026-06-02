@@ -59,3 +59,11 @@ def test_game_statistics_builds_rank_summary(monkeypatch) -> None:
     assert stats.practical_rating.startswith("A")
     assert stats.moves[0].note == "Top engine and player move"
 
+
+def test_game_statistics_includes_played_move_outside_candidate_limit() -> None:
+    stats = analyze_game_statistics(PGN, use_demo_data=True, max_moves=1, max_plies=2)
+
+    assert stats.analyzed_plies == 2
+    assert stats.moves[1].played_uci == "e7e5"
+    assert stats.moves[1].engine_rank is not None
+    assert stats.moves[1].engine_score is not None

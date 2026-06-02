@@ -14,6 +14,10 @@ class PositionAnalysis:
     best_human_move: MoveAnalysis | None = None
     best_hybrid_move: MoveAnalysis | None = None
     most_popular_move: MoveAnalysis | None = None
+    current_eval_cp: int | None = None
+    current_eval_pawns: float | None = None
+    current_mate_score: int | None = None
+    current_score_side_to_move: float | None = None
     explanation: str = ""
     source: str = "unknown"
     warnings: list[str] = field(default_factory=list)
@@ -25,4 +29,3 @@ class PositionAnalysis:
         import pandas as pd
 
         return pd.DataFrame(self.to_records())
-

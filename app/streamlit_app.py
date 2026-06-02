@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from hashlib import sha256
 from pathlib import Path
 
 import chess.svg
@@ -87,6 +88,7 @@ def render_analysis(fen: str, analysis_key: str) -> None:
         st.warning(warning)
 
     st.caption("Analiza odswieza sie automatycznie po zmianie pozycji.")
+    render_position_eval(analysis)
     render_ranked_move_columns(analysis)
 
     st.subheader("Kompromis i popularnosc")
@@ -126,19 +128,20 @@ def render_ranked_move_columns(analysis) -> None:
     player_col, engine_col = st.columns(2)
     with player_col:
         st.markdown("#### 5 najlepszych dla gracza")
-        for move in sorted(
-            [move for move in analysis.moves if move.rank_human is not None],
-            key=lambda item: item.rank_human,
-        )[:5]:
-            score = _format_score(move.human_score_side_to_move)
+        player_moves = _player_suggestion_moves(analysis.moves)
+        for display_rank, move in enumerate(player_moves, start=1):
+            score = _format_score(_move_player_score(move))
             popularity_text = _format_score(move.popularity)
-            st.markdown(f"**{move.rank_human}. {move.move_san}**")
-            st.caption(
-                f"human score {score} | popularnosc {popularity_text} | "
-                f"{move.total_games} partii | {move.label}"
-            )
-        if not any(move.rank_human is not None for move in analysis.moves):
-            st.info("Brak danych historycznych dla tej pozycji.")
+            eval_text = _format_eval(move.engine_eval_pawns, move.mate_score)
+            rank_text = move.rank_human or display_rank
+            st.markdown(f"**{rank_text}. {move.move_san}**")
+            if move.rank_human is not None:
+                st.caption(
+                    f"{eval_text} | human score {score} | popularnosc {popularity_text} | "
+                    f"{move.total_games} partii | {move.label}"
+                )
+            else:
+                st.caption(f"{eval_text} | practical score {score} | fallback bez danych historycznych")
 
     with engine_col:
         st.markdown("#### 5 najlepszych dla komputera")
@@ -152,6 +155,47 @@ def render_ranked_move_columns(analysis) -> None:
             st.caption(f"{eval_text} | engine score {score} | {move.label}")
         if not any(move.rank_engine is not None for move in analysis.moves):
             st.info("Brak danych silnikowych dla tej pozycji.")
+
+
+def render_position_eval(analysis) -> None:
+    side_label = "Biale" if analysis.side_to_move == "white" else "Czarne"
+    eval_text = _format_eval(analysis.current_eval_pawns, analysis.current_mate_score)
+    score_text = _format_score(analysis.current_score_side_to_move)
+    cols = st.columns(3)
+    cols[0].metric("Na ruchu", side_label)
+    cols[1].metric("Eval pozycji", eval_text)
+    cols[2].metric("Score strony na ruchu", score_text)
+
+
+def _player_suggestion_moves(moves) -> list:
+    historical = sorted(
+        [move for move in moves if move.rank_human is not None],
+        key=lambda item: item.rank_human,
+    )
+    if historical:
+        return historical[:5]
+    practical = [
+        move
+        for move in moves
+        if move.hybrid_score is not None or move.engine_score_side_to_move is not None
+    ]
+    practical.sort(
+        key=lambda item: (
+            item.hybrid_score
+            if item.hybrid_score is not None
+            else item.engine_score_side_to_move
+            if item.engine_score_side_to_move is not None
+            else -1
+        ),
+        reverse=True,
+    )
+    return practical[:5]
+
+
+def _move_player_score(move) -> float | None:
+    if move.human_score_side_to_move is not None:
+        return move.human_score_side_to_move
+    return move.hybrid_score
 
 
 @st.cache_data(show_spinner=False, ttl=180)
@@ -320,11 +364,16 @@ if mode == "Wgraj partie":
     board_col, controls_col = st.columns([1.05, 1])
     with controls_col:
         uploaded_pgn = st.file_uploader("Wgraj plik PGN", type=["pgn"])
-        uploaded_text = ""
         if uploaded_pgn is not None:
-            uploaded_text = uploaded_pgn.read().decode("utf-8", errors="replace")
+            uploaded_bytes = uploaded_pgn.getvalue()
+            upload_id = sha256(uploaded_bytes).hexdigest()
+            if st.session_state.get("uploaded_pgn_id") != upload_id:
+                st.session_state["uploaded_pgn_id"] = upload_id
+                st.session_state["pgn_text"] = uploaded_bytes.decode("utf-8", errors="replace")
 
-        pgn_text = st.text_area("PGN", value=uploaded_text or SAMPLE_PGN, height=260)
+        if "pgn_text" not in st.session_state:
+            st.session_state["pgn_text"] = SAMPLE_PGN
+        pgn_text = st.text_area("PGN", height=260, key="pgn_text")
         try:
             positions = positions_from_pgn(pgn_text)
             labels = [

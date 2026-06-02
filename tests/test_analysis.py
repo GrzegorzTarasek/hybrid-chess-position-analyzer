@@ -36,6 +36,8 @@ def test_rankings_are_sorted_in_demo() -> None:
 def test_black_to_move_has_engine_evaluations_in_demo() -> None:
     result = analyze_position(BLACK_TO_MOVE_FEN, use_demo_data=True, max_moves=8)
     assert result.side_to_move == "black"
+    assert result.current_eval_pawns is not None
+    assert result.current_score_side_to_move is not None
     assert result.best_engine_move is not None
     assert all(move.engine_eval_pawns is not None for move in result.moves)
     assert all(move.rank_engine is not None for move in result.moves)
@@ -53,3 +55,16 @@ def test_missing_stockfish_falls_back_to_engine_evaluations(monkeypatch) -> None
     assert result.best_engine_move is not None
     assert all(move.engine_eval_pawns is not None for move in result.moves)
     assert any("simplified local evaluation" in warning for warning in result.warnings)
+
+
+def test_required_move_is_analyzed_even_outside_candidate_limit() -> None:
+    result = analyze_position(
+        BLACK_TO_MOVE_FEN,
+        use_demo_data=True,
+        max_moves=1,
+        required_moves=["e7e5"],
+    )
+    played = next((move for move in result.moves if move.move_uci == "e7e5"), None)
+    assert played is not None
+    assert played.engine_eval_pawns is not None
+    assert played.rank_engine is not None

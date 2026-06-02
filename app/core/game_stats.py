@@ -74,6 +74,7 @@ def analyze_game_statistics(
             refresh_cache=refresh_cache,
             use_demo_data=use_demo_data,
             engine_k=engine_k,
+            required_moves=[position_after.move_uci],
         )
         played = next(
             (move for move in analysis.moves if move.move_uci == position_after.move_uci),
@@ -147,4 +148,3 @@ def _practical_rating(player_alignment: float | None, engine_alignment: float | 
     if blended >= 0.35:
         return "D - risky or inaccurate game"
     return "E - mostly outside recommended moves"
-
