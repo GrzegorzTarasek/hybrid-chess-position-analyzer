@@ -5,7 +5,6 @@ from pathlib import Path
 
 import chess.svg
 import streamlit as st
-import streamlit.components.v1 as components
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -87,10 +86,35 @@ def render_analysis(fen: str, button_key: str) -> None:
     )
 
 
-def render_board(fen: str) -> None:
+def render_board(fen: str, last_move_uci: str | None = None, size: int = 520) -> None:
     board = board_from_fen(fen)
-    svg = chess.svg.board(board=board, size=420)
-    components.html(svg, height=440)
+    last_move = None
+    if last_move_uci:
+        try:
+            last_move = chess.Move.from_uci(last_move_uci)
+        except ValueError:
+            last_move = None
+    check_square = board.king(board.turn) if board.is_check() else None
+    svg = chess.svg.board(board=board, size=size, lastmove=last_move, check=check_square)
+    html = f"""
+    <style>
+      .board-wrap {{
+        width: {size}px;
+        max-width: 100%;
+        margin: 0 auto;
+        border: 1px solid #2d2d2d;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+        background: #262421;
+      }}
+      .board-wrap svg {{
+        display: block;
+        width: 100%;
+        height: auto;
+      }}
+    </style>
+    <div class="board-wrap">{svg}</div>
+    """
+    st.html(html)
 
 
 st.set_page_config(page_title="Hybrid Chess Position Analyzer", layout="wide")
@@ -120,25 +144,36 @@ mode = st.radio("Tryb", ["Analiza partii", "Analiza na zywo"], horizontal=True)
 
 if mode == "Analiza partii":
     st.subheader("Analiza partii")
-    uploaded_pgn = st.file_uploader("Wgraj plik PGN", type=["pgn"])
-    uploaded_text = ""
-    if uploaded_pgn is not None:
-        uploaded_text = uploaded_pgn.read().decode("utf-8", errors="replace")
+    board_col, controls_col = st.columns([1.05, 1])
+    with controls_col:
+        uploaded_pgn = st.file_uploader("Wgraj plik PGN", type=["pgn"])
+        uploaded_text = ""
+        if uploaded_pgn is not None:
+            uploaded_text = uploaded_pgn.read().decode("utf-8", errors="replace")
 
-    pgn_text = st.text_area("PGN", value=uploaded_text or SAMPLE_PGN, height=260)
-    try:
-        positions = positions_from_pgn(pgn_text)
-        labels = [
-            f"{position.ply}: {position.move_san} ({position.fen.split()[1]} to move)"
-            for position in positions
-        ]
-        selected_index = st.slider("Analizuj pozycje po polruchu", 0, len(positions) - 1, 0)
-        st.selectbox("Wybrana pozycja", labels, index=selected_index, disabled=True)
-        selected_fen = positions[selected_index].fen
-        st.text_area("Wybrany FEN", value=selected_fen, height=80, disabled=True)
+        pgn_text = st.text_area("PGN", value=uploaded_text or SAMPLE_PGN, height=260)
+        try:
+            positions = positions_from_pgn(pgn_text)
+            labels = [
+                f"{position.ply}: {position.move_san} ({position.fen.split()[1]} to move)"
+                for position in positions
+            ]
+            selected_index = st.slider("Analizuj pozycje po polruchu", 0, len(positions) - 1, 0)
+            st.selectbox("Wybrana pozycja", labels, index=selected_index, disabled=True)
+            selected_position = positions[selected_index]
+            selected_fen = selected_position.fen
+            st.text_area("Wybrany FEN", value=selected_fen, height=80, disabled=True)
+        except PgnError as exc:
+            selected_position = None
+            selected_fen = None
+            st.warning(str(exc))
+
+    with board_col:
+        if selected_fen:
+            render_board(selected_fen, selected_position.move_uci if selected_position else None)
+
+    if selected_fen:
         render_analysis(selected_fen, "analyze_game")
-    except PgnError as exc:
-        st.warning(str(exc))
 
 if mode == "Analiza na zywo":
     st.subheader("Analiza na zywo")
@@ -150,6 +185,8 @@ if mode == "Analiza na zywo":
         st.session_state["live_history"] = []
     if "live_moves" not in st.session_state:
         st.session_state["live_moves"] = []
+    if "live_move_uci_history" not in st.session_state:
+        st.session_state["live_move_uci_history"] = []
 
     left, right = st.columns([1, 1])
     with left:
@@ -161,6 +198,7 @@ if mode == "Analiza na zywo":
                 st.session_state["live_fen"] = current_fen
                 st.session_state["live_history"] = []
                 st.session_state["live_moves"] = []
+                st.session_state["live_move_uci_history"] = []
                 st.rerun()
             except BoardError as exc:
                 st.error(str(exc))
@@ -170,12 +208,15 @@ if mode == "Analiza na zywo":
                 st.session_state["live_fen"] = st.session_state["live_history"].pop()
                 if st.session_state["live_moves"]:
                     st.session_state["live_moves"].pop()
+                if st.session_state["live_move_uci_history"]:
+                    st.session_state["live_move_uci_history"].pop()
                 st.rerun()
 
         if action_cols[2].button("Reset"):
             st.session_state["live_fen"] = START_FEN
             st.session_state["live_history"] = []
             st.session_state["live_moves"] = []
+            st.session_state["live_move_uci_history"] = []
             st.rerun()
 
         move_text = st.text_input("Ruch (SAN albo UCI)", placeholder="e4, Nf3, e2e4")
@@ -189,6 +230,7 @@ if mode == "Analiza na zywo":
                 next_fen, san, uci = apply_move_text(previous_fen, move_to_play)
                 st.session_state["live_history"].append(previous_fen)
                 st.session_state["live_moves"].append(f"{san} ({uci})")
+                st.session_state["live_move_uci_history"].append(uci)
                 st.session_state["live_fen"] = next_fen
                 st.rerun()
             except BoardError as exc:
@@ -199,6 +241,11 @@ if mode == "Analiza na zywo":
             st.write(" ".join(st.session_state["live_moves"]))
 
     with right:
-        render_board(st.session_state["live_fen"])
+        last_move_uci = (
+            st.session_state["live_move_uci_history"][-1]
+            if st.session_state["live_move_uci_history"]
+            else None
+        )
+        render_board(st.session_state["live_fen"], last_move_uci=last_move_uci)
 
     render_analysis(st.session_state["live_fen"], "analyze_live")

@@ -85,6 +85,8 @@ The Streamlit UI has two main modes:
 - **Game analysis**: upload or paste a PGN, choose a ply with the slider, and analyze that exact position.
 - **Live analysis**: keep a current board, enter moves in SAN or UCI, undo or reset, paste a FEN, and analyze the live position.
 
+Both modes show a visual chessboard. The board highlights the last move and check squares when available, so the workflow feels closer to a normal chess analysis board instead of a raw FEN-only tool.
+
 ## Example FENs
 
 Starting position:
