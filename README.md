@@ -13,8 +13,10 @@ Screenshots can be added here after running the Streamlit app locally.
 
 ## Features
 
-- Analyze a position from FEN.
-- Paste PGN and select the exact ply to analyze.
+- Analyze a full game from pasted or uploaded PGN.
+- Select the exact ply from a game and analyze that position.
+- Use live analysis to build a position move by move with SAN or UCI input.
+- Paste a FEN into live analysis and continue from that position.
 - Query Lichess Opening Explorer without downloading a full game database.
 - Cache historical API responses in SQLite.
 - Analyze candidate moves with a local Stockfish binary.
@@ -75,6 +77,13 @@ streamlit run app/streamlit_app.py
 ## Demo Mode
 
 Demo mode uses `examples/demo_data.json` and synthetic Stockfish-like evaluations. It is useful for presentations, screenshots, and local checks without internet or Stockfish.
+
+## App Modes
+
+The Streamlit UI has two main modes:
+
+- **Game analysis**: upload or paste a PGN, choose a ply with the slider, and analyze that exact position.
+- **Live analysis**: keep a current board, enter moves in SAN or UCI, undo or reset, paste a FEN, and analyze the live position.
 
 ## Example FENs
 
@@ -153,4 +162,3 @@ The Streamlit app is intentionally thin. Core chess logic, scoring, labeling, AP
 ```bash
 pytest
 ```
-
