@@ -12,9 +12,10 @@ if str(ROOT) not in sys.path:
 
 from app.components.charts import score_comparison_chart
 from app.components.explanations import move_summary, recommendation_cards
+from app.components.interactive_board import interactive_board
 from app.components.tables import display_dataframe
 from app.core.analysis import analyze_position
-from app.core.board_utils import BoardError, board_from_fen
+from app.core.board_utils import BoardError, board_from_fen, legal_moves_uci
 from app.core.live_utils import apply_move_text, legal_move_labels
 from app.core.pgn_utils import PgnError, positions_from_pgn
 
@@ -140,10 +141,10 @@ with st.sidebar:
     use_cache = st.checkbox("Use cache", value=True)
     refresh_cache = st.checkbox("Refresh cache", value=False)
 
-mode = st.radio("Tryb", ["Analiza partii", "Analiza na zywo"], horizontal=True)
+mode = st.radio("Tryb", ["Przesuwaj figury", "Wgraj partie"], horizontal=True)
 
-if mode == "Analiza partii":
-    st.subheader("Analiza partii")
+if mode == "Wgraj partie":
+    st.subheader("Wgraj partie")
     board_col, controls_col = st.columns([1.05, 1])
     with controls_col:
         uploaded_pgn = st.file_uploader("Wgraj plik PGN", type=["pgn"])
@@ -175,9 +176,9 @@ if mode == "Analiza partii":
     if selected_fen:
         render_analysis(selected_fen, "analyze_game")
 
-if mode == "Analiza na zywo":
-    st.subheader("Analiza na zywo")
-    st.caption("Buduj pozycje ruch po ruchu, wklej FEN albo analizuj aktualna szachownice.")
+if mode == "Przesuwaj figury":
+    st.subheader("Przesuwaj figury")
+    st.caption("Przesun figure na szachownicy, a aplikacja zaktualizuje pozycje i pozwoli ja analizowac.")
 
     if "live_fen" not in st.session_state:
         st.session_state["live_fen"] = START_FEN
@@ -188,8 +189,8 @@ if mode == "Analiza na zywo":
     if "live_move_uci_history" not in st.session_state:
         st.session_state["live_move_uci_history"] = []
 
-    left, right = st.columns([1, 1])
-    with left:
+    board_col, side_col = st.columns([1.15, 1])
+    with side_col:
         current_fen = st.text_area("Aktualny FEN", value=st.session_state["live_fen"], height=90)
         action_cols = st.columns(3)
         if action_cols[0].button("Ustaw FEN"):
@@ -219,15 +220,45 @@ if mode == "Analiza na zywo":
             st.session_state["live_move_uci_history"] = []
             st.rerun()
 
-        move_text = st.text_input("Ruch (SAN albo UCI)", placeholder="e4, Nf3, e2e4")
-        legal_options = legal_move_labels(st.session_state["live_fen"])
-        selected_move = st.selectbox("Albo wybierz legalny ruch", [""] + legal_options)
-        move_to_play = move_text or selected_move.split(" (", maxsplit=1)[0]
+        with st.expander("Awaryjnie wpisz ruch"):
+            move_text = st.text_input("Ruch (SAN albo UCI)", placeholder="e4, Nf3, e2e4")
+            legal_options = legal_move_labels(st.session_state["live_fen"])
+            selected_move = st.selectbox("Albo wybierz legalny ruch", [""] + legal_options)
+            move_to_play = move_text or selected_move.split(" (", maxsplit=1)[0]
 
-        if st.button("Wykonaj ruch"):
+            if st.button("Wykonaj ruch"):
+                try:
+                    previous_fen = st.session_state["live_fen"]
+                    next_fen, san, uci = apply_move_text(previous_fen, move_to_play)
+                    st.session_state["live_history"].append(previous_fen)
+                    st.session_state["live_moves"].append(f"{san} ({uci})")
+                    st.session_state["live_move_uci_history"].append(uci)
+                    st.session_state["live_fen"] = next_fen
+                    st.rerun()
+                except BoardError as exc:
+                    st.error(str(exc))
+
+        if st.session_state["live_moves"]:
+            st.write("Rozegrane ruchy:")
+            st.write(" ".join(st.session_state["live_moves"]))
+
+    with board_col:
+        last_move_uci = (
+            st.session_state["live_move_uci_history"][-1]
+            if st.session_state["live_move_uci_history"]
+            else None
+        )
+        board_result = interactive_board(
+            fen=st.session_state["live_fen"],
+            legal_moves=legal_moves_uci(st.session_state["live_fen"]),
+            last_move=last_move_uci,
+            key="live_drag_board",
+        )
+        dragged_move = getattr(board_result, "move", None)
+        if dragged_move:
             try:
                 previous_fen = st.session_state["live_fen"]
-                next_fen, san, uci = apply_move_text(previous_fen, move_to_play)
+                next_fen, san, uci = apply_move_text(previous_fen, dragged_move)
                 st.session_state["live_history"].append(previous_fen)
                 st.session_state["live_moves"].append(f"{san} ({uci})")
                 st.session_state["live_move_uci_history"].append(uci)
@@ -235,17 +266,5 @@ if mode == "Analiza na zywo":
                 st.rerun()
             except BoardError as exc:
                 st.error(str(exc))
-
-        if st.session_state["live_moves"]:
-            st.write("Rozegrane ruchy:")
-            st.write(" ".join(st.session_state["live_moves"]))
-
-    with right:
-        last_move_uci = (
-            st.session_state["live_move_uci_history"][-1]
-            if st.session_state["live_move_uci_history"]
-            else None
-        )
-        render_board(st.session_state["live_fen"], last_move_uci=last_move_uci)
 
     render_analysis(st.session_state["live_fen"], "analyze_live")
