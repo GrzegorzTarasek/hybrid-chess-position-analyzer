@@ -22,6 +22,8 @@ Screenshots can be added here after running the Streamlit app locally.
 - Analyze candidate moves with a local Stockfish binary.
 - Run fully offline in demo mode.
 - Compare best engine, best human, best hybrid, and most popular moves.
+- Show engine-ranked moves and human-ranked moves in separate columns.
+- Refresh analysis automatically after the board position changes.
 - Export the result table as CSV.
 - Visualize engine score, human score, and hybrid score with Plotly.
 
@@ -86,6 +88,7 @@ The Streamlit UI has two main modes:
 - **Upload game**: upload or paste a PGN, choose a ply with the slider, and analyze that exact position.
 
 Both modes show a visual chessboard. The game-upload mode highlights the selected PGN move, while the move-pieces mode behaves like an interactive analysis board.
+The analysis refreshes automatically when the position changes and presents engine moves and human/historical moves in two separate columns.
 
 ## Example FENs
 

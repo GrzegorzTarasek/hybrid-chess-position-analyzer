@@ -11,7 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.components.charts import score_comparison_chart
-from app.components.explanations import move_summary, recommendation_cards
+from app.components.explanations import move_summary
 from app.components.interactive_board import interactive_board
 from app.components.tables import display_dataframe
 from app.core.analysis import analyze_position
@@ -33,24 +33,48 @@ SAMPLE_PGN = """[Event "Sample"]
 """
 
 
-def render_analysis(fen: str, button_key: str) -> None:
-    analyze = st.button("Analyze position", type="primary", key=button_key)
-    if not analyze:
-        return
+@st.cache_data(show_spinner=False, ttl=180)
+def cached_analyze_position(
+    fen: str,
+    alpha_value: float,
+    min_games_value: int,
+    max_moves_value: int,
+    stockfish_depth_value: int,
+    stockfish_time_limit_value: float | None,
+    use_cache_value: bool,
+    refresh_cache_value: bool,
+    use_demo_data_value: bool,
+    engine_k_value: float,
+):
+    return analyze_position(
+        fen=fen,
+        alpha=alpha_value,
+        min_games=min_games_value,
+        max_moves=max_moves_value,
+        stockfish_depth=stockfish_depth_value,
+        stockfish_time_limit=stockfish_time_limit_value,
+        use_cache=use_cache_value,
+        refresh_cache=refresh_cache_value,
+        use_demo_data=use_demo_data_value,
+        engine_k=engine_k_value,
+    )
 
+
+def render_analysis(fen: str, analysis_key: str) -> None:
     try:
-        analysis = analyze_position(
-            fen=fen,
-            alpha=alpha,
-            min_games=int(min_games),
-            max_moves=int(max_moves),
-            stockfish_depth=int(stockfish_depth),
-            stockfish_time_limit=stockfish_time_limit or None,
-            use_cache=use_cache,
-            refresh_cache=refresh_cache,
-            use_demo_data=use_demo_data,
-            engine_k=engine_k,
-        )
+        with st.spinner("Analizuje aktualna pozycje..."):
+            analysis = cached_analyze_position(
+                fen=fen,
+                alpha_value=alpha,
+                min_games_value=int(min_games),
+                max_moves_value=int(max_moves),
+                stockfish_depth_value=int(stockfish_depth),
+                stockfish_time_limit_value=stockfish_time_limit or None,
+                use_cache_value=use_cache,
+                refresh_cache_value=refresh_cache,
+                use_demo_data_value=use_demo_data,
+                engine_k_value=engine_k,
+            )
     except BoardError as exc:
         st.error(str(exc))
         return
@@ -61,9 +85,18 @@ def render_analysis(fen: str, button_key: str) -> None:
     for warning in analysis.warnings:
         st.warning(warning)
 
-    st.subheader("Recommendations")
-    columns = st.columns(4)
-    for column, (title, move) in zip(columns, recommendation_cards(analysis)):
+    st.caption("Analiza odswieza sie automatycznie po zmianie pozycji.")
+    render_ranked_move_columns(analysis)
+
+    st.subheader("Kompromis i popularnosc")
+    columns = st.columns(2)
+    for column, (title, move) in zip(
+        columns,
+        [
+            ("Best hybrid move", analysis.best_hybrid_move),
+            ("Most popular move", analysis.most_popular_move),
+        ],
+    ):
         column.metric(title, move.move_san if move else "No data")
         column.caption(move_summary(move))
 
@@ -73,18 +106,65 @@ def render_analysis(fen: str, button_key: str) -> None:
     df = analysis.to_dataframe()
     st.subheader("Score comparison")
     if not df.empty:
-        st.plotly_chart(score_comparison_chart(df), use_container_width=True)
+        st.plotly_chart(score_comparison_chart(df), width="stretch")
 
     st.subheader("Move table")
     rendered = display_dataframe(df)
-    st.dataframe(rendered, use_container_width=True, hide_index=True)
+    st.dataframe(rendered, width="stretch", hide_index=True)
     st.download_button(
         "Download CSV",
         data=rendered.to_csv(index=False).encode("utf-8"),
         file_name="hybrid_chess_analysis.csv",
         mime="text/csv",
-        key=f"{button_key}_csv",
+        key=f"{analysis_key}_csv",
     )
+
+
+def render_ranked_move_columns(analysis) -> None:
+    st.subheader("Ruchy silnikowe i ludzkie")
+    engine_col, human_col = st.columns(2)
+    with engine_col:
+        st.markdown("#### Ruchy silnikowe")
+        for move in sorted(
+            [move for move in analysis.moves if move.rank_engine is not None],
+            key=lambda item: item.rank_engine,
+        )[:6]:
+            score = _format_score(move.engine_score_side_to_move)
+            eval_text = _format_eval(move.engine_eval_pawns, move.mate_score)
+            st.markdown(f"**{move.rank_engine}. {move.move_san}**")
+            st.caption(f"{eval_text} | engine score {score} | {move.label}")
+        if not any(move.rank_engine is not None for move in analysis.moves):
+            st.info("Brak danych silnikowych dla tej pozycji.")
+
+    with human_col:
+        st.markdown("#### Ruchy ludzkie")
+        for move in sorted(
+            [move for move in analysis.moves if move.rank_human is not None],
+            key=lambda item: item.rank_human,
+        )[:6]:
+            score = _format_score(move.human_score_side_to_move)
+            popularity_text = _format_score(move.popularity)
+            st.markdown(f"**{move.rank_human}. {move.move_san}**")
+            st.caption(
+                f"human score {score} | popularnosc {popularity_text} | "
+                f"{move.total_games} partii | {move.label}"
+            )
+        if not any(move.rank_human is not None for move in analysis.moves):
+            st.info("Brak danych historycznych dla tej pozycji.")
+
+
+def _format_score(value: float | None) -> str:
+    if value is None:
+        return "-"
+    return f"{value:.3f}"
+
+
+def _format_eval(eval_pawns: float | None, mate_score: int | None) -> str:
+    if mate_score is not None:
+        return f"mate {mate_score:+d}"
+    if eval_pawns is None:
+        return "eval -"
+    return f"eval {eval_pawns:+.2f}"
 
 
 def render_board(fen: str, last_move_uci: str | None = None, size: int = 520) -> None:
@@ -205,6 +285,8 @@ if mode == "Przesuwaj figury":
         st.session_state["live_moves"] = []
     if "live_move_uci_history" not in st.session_state:
         st.session_state["live_move_uci_history"] = []
+    if "last_processed_drag_move" not in st.session_state:
+        st.session_state["last_processed_drag_move"] = None
 
     board_col, side_col = st.columns([1.15, 1])
     with side_col:
@@ -272,10 +354,11 @@ if mode == "Przesuwaj figury":
             key="live_drag_board",
         )
         dragged_move = getattr(board_result, "move", None)
-        if dragged_move:
+        if dragged_move and dragged_move != st.session_state["last_processed_drag_move"]:
             try:
                 previous_fen = st.session_state["live_fen"]
                 next_fen, san, uci = apply_move_text(previous_fen, dragged_move)
+                st.session_state["last_processed_drag_move"] = dragged_move
                 st.session_state["live_history"].append(previous_fen)
                 st.session_state["live_moves"].append(f"{san} ({uci})")
                 st.session_state["live_move_uci_history"].append(uci)
