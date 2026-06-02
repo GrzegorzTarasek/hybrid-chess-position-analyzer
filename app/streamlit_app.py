@@ -16,6 +16,7 @@ from app.components.interactive_board import interactive_board
 from app.components.tables import display_dataframe
 from app.core.analysis import analyze_position
 from app.core.board_utils import BoardError, board_from_fen, legal_moves_uci
+from app.core.game_stats import analyze_game_statistics
 from app.core.live_utils import apply_move_text, legal_move_labels
 from app.core.pgn_utils import PgnError, positions_from_pgn
 
@@ -121,27 +122,14 @@ def render_analysis(fen: str, analysis_key: str) -> None:
 
 
 def render_ranked_move_columns(analysis) -> None:
-    st.subheader("Ruchy silnikowe i ludzkie")
-    engine_col, human_col = st.columns(2)
-    with engine_col:
-        st.markdown("#### Ruchy silnikowe")
-        for move in sorted(
-            [move for move in analysis.moves if move.rank_engine is not None],
-            key=lambda item: item.rank_engine,
-        )[:6]:
-            score = _format_score(move.engine_score_side_to_move)
-            eval_text = _format_eval(move.engine_eval_pawns, move.mate_score)
-            st.markdown(f"**{move.rank_engine}. {move.move_san}**")
-            st.caption(f"{eval_text} | engine score {score} | {move.label}")
-        if not any(move.rank_engine is not None for move in analysis.moves):
-            st.info("Brak danych silnikowych dla tej pozycji.")
-
-    with human_col:
-        st.markdown("#### Ruchy ludzkie")
+    st.subheader("Sugestie ruchow")
+    player_col, engine_col = st.columns(2)
+    with player_col:
+        st.markdown("#### 5 najlepszych dla gracza")
         for move in sorted(
             [move for move in analysis.moves if move.rank_human is not None],
             key=lambda item: item.rank_human,
-        )[:6]:
+        )[:5]:
             score = _format_score(move.human_score_side_to_move)
             popularity_text = _format_score(move.popularity)
             st.markdown(f"**{move.rank_human}. {move.move_san}**")
@@ -151,6 +139,81 @@ def render_ranked_move_columns(analysis) -> None:
             )
         if not any(move.rank_human is not None for move in analysis.moves):
             st.info("Brak danych historycznych dla tej pozycji.")
+
+    with engine_col:
+        st.markdown("#### 5 najlepszych dla komputera")
+        for move in sorted(
+            [move for move in analysis.moves if move.rank_engine is not None],
+            key=lambda item: item.rank_engine,
+        )[:5]:
+            score = _format_score(move.engine_score_side_to_move)
+            eval_text = _format_eval(move.engine_eval_pawns, move.mate_score)
+            st.markdown(f"**{move.rank_engine}. {move.move_san}**")
+            st.caption(f"{eval_text} | engine score {score} | {move.label}")
+        if not any(move.rank_engine is not None for move in analysis.moves):
+            st.info("Brak danych silnikowych dla tej pozycji.")
+
+
+@st.cache_data(show_spinner=False, ttl=180)
+def cached_game_statistics(
+    pgn_text: str,
+    alpha_value: float,
+    min_games_value: int,
+    max_moves_value: int,
+    stockfish_depth_value: int,
+    stockfish_time_limit_value: float | None,
+    use_cache_value: bool,
+    refresh_cache_value: bool,
+    use_demo_data_value: bool,
+    engine_k_value: float,
+    max_plies_value: int,
+):
+    return analyze_game_statistics(
+        pgn_text=pgn_text,
+        alpha=alpha_value,
+        min_games=min_games_value,
+        max_moves=max_moves_value,
+        stockfish_depth=stockfish_depth_value,
+        stockfish_time_limit=stockfish_time_limit_value,
+        use_cache=use_cache_value,
+        refresh_cache=refresh_cache_value,
+        use_demo_data=use_demo_data_value,
+        engine_k=engine_k_value,
+        max_plies=max_plies_value,
+    )
+
+
+def render_game_statistics(pgn_text: str) -> None:
+    st.subheader("Statystyka partii")
+    with st.spinner("Licze ranking ruchow w partii..."):
+        stats = cached_game_statistics(
+            pgn_text=pgn_text,
+            alpha_value=alpha,
+            min_games_value=int(min_games),
+            max_moves_value=int(max_moves),
+            stockfish_depth_value=int(stockfish_depth),
+            stockfish_time_limit_value=stockfish_time_limit or None,
+            use_cache_value=use_cache,
+            refresh_cache_value=refresh_cache,
+            use_demo_data_value=use_demo_data,
+            engine_k_value=engine_k,
+            max_plies_value=int(game_stats_max_plies),
+        )
+
+    metric_cols = st.columns(5)
+    metric_cols[0].metric("Ranking", stats.practical_rating)
+    metric_cols[1].metric("Top 5 gracza", _format_percent(stats.player_alignment))
+    metric_cols[2].metric("Top 5 komputera", _format_percent(stats.engine_alignment))
+    metric_cols[3].metric("Avg gracz rank", _format_score(stats.average_player_rank))
+    metric_cols[4].metric("Avg engine rank", _format_score(stats.average_engine_rank))
+
+    st.caption(
+        f"Przeanalizowano {stats.analyzed_plies} polruchow. "
+        "Ranking liczy, jak czesto zagrane ruchy trafialy do top 5 praktycznych i silnikowych sugestii."
+    )
+    stats_df = stats.to_dataframe()
+    if not stats_df.empty:
+        st.dataframe(stats_df, width="stretch", hide_index=True)
 
 
 def _format_score(value: float | None) -> str:
@@ -165,6 +228,12 @@ def _format_eval(eval_pawns: float | None, mate_score: int | None) -> str:
     if eval_pawns is None:
         return "eval -"
     return f"eval {eval_pawns:+.2f}"
+
+
+def _format_percent(value: float | None) -> str:
+    if value is None:
+        return "-"
+    return f"{value:.0%}"
 
 
 def render_board(fen: str, last_move_uci: str | None = None, size: int = 520) -> None:
@@ -237,6 +306,12 @@ with st.sidebar:
     use_demo_data = st.checkbox("Use demo data", value=True)
     use_cache = st.checkbox("Use cache", value=True)
     refresh_cache = st.checkbox("Refresh cache", value=False)
+    game_stats_max_plies = st.number_input(
+        "Game statistics plies",
+        min_value=1,
+        max_value=120,
+        value=30,
+    )
 
 mode = st.radio("Tryb", ["Przesuwaj figury", "Wgraj partie"], horizontal=True)
 
@@ -272,6 +347,7 @@ if mode == "Wgraj partie":
 
     if selected_fen:
         render_analysis(selected_fen, "analyze_game")
+        render_game_statistics(pgn_text)
 
 if mode == "Przesuwaj figury":
     st.subheader("Przesuwaj figury")

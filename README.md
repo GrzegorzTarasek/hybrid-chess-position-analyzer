@@ -85,10 +85,10 @@ Demo mode uses `examples/demo_data.json` and synthetic Stockfish-like evaluation
 The Streamlit UI has two main modes:
 
 - **Move pieces**: drag pieces directly on the chessboard, or click a piece and then click its target square. The app validates moves with `python-chess`, updates the live FEN, and lets you analyze the current board.
-- **Upload game**: upload or paste a PGN, choose a ply with the slider, and analyze that exact position.
+- **Upload game**: upload or paste a finished PGN, choose a ply with the slider, analyze that exact position, and review separate whole-game statistics.
 
 Both modes show a visual chessboard. The game-upload mode highlights the selected PGN move, while the move-pieces mode behaves like an interactive analysis board.
-The analysis refreshes automatically when the position changes and presents engine moves and human/historical moves in two separate columns.
+The analysis refreshes automatically when the position changes. Suggestions are split into two columns: the five best practical/player moves and the five best engine/computer moves.
 
 ## Example FENs
 
